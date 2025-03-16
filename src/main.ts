@@ -5,6 +5,7 @@ import { VersioningType } from '@nestjs/common';
 import helmet from 'helmet';
 import compression from 'compression';
 import { ValidationPipe } from '@nestjs/common';
+import { setDefaultResultOrder } from 'node:dns';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -14,6 +15,9 @@ async function bootstrap() {
   app.enableCors({
     origin: '*',
   });
+
+  // Set the default result order for the DNS resolver
+  setDefaultResultOrder('ipv4first');
 
   // Set the global prefix for the API
   app.setGlobalPrefix('api');
