@@ -7,13 +7,14 @@ import { PayeeService } from 'src/modules/payee/payee.service';
 import { ADD_PAYEE_SCENE_ID } from 'src/modules/payee/scenes/add-payee.scene';
 import { Payee, PurposeCode } from 'src/types';
 import { RequireAuth } from 'src/modules/auth/auth.decorator';
+import { escapeMarkdownV2 } from 'src/utils';
 
 // Define the scene ID
 export const EMAIL_TRANSFER_SCENE_ID = 'EMAIL_TRANSFER_SCENE';
 
 enum EmailTransferActions {
-  NAV_BACK = 'NAV_BACK',
-  NAV_CANCEL = 'NAV_CANCEL',
+  BACK = 'BACK',
+  CANCEL = 'CANCEL',
   CLOSE = 'CLOSE',
   ADD_PAYEE = 'ADD_PAYEE',
   CONFIRM_TRANSFER = 'CONFIRM_TRANSFER',
@@ -30,8 +31,8 @@ export class EmailTransfer {
 
   private getNavigationKeyboard() {
     return Markup.inlineKeyboard([
-      [Markup.button.callback('🔙 Back', EmailTransferActions.NAV_BACK)],
-      [Markup.button.callback('❌ Cancel', EmailTransferActions.NAV_CANCEL)],
+      [Markup.button.callback('🔙 Back', EmailTransferActions.BACK)],
+      [Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL)],
       [Markup.button.callback('❌ Close', EmailTransferActions.CLOSE)],
     ]);
   }
@@ -50,19 +51,14 @@ export class EmailTransfer {
         const keyboard = Markup.inlineKeyboard([
           [
             Markup.button.callback(
-              '➕ Add Payee',
+              '➕ Add Recipient',
               EmailTransferActions.ADD_PAYEE,
             ),
           ],
-          [
-            Markup.button.callback(
-              '❌ Cancel',
-              EmailTransferActions.NAV_CANCEL,
-            ),
-          ],
+          [Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL)],
         ]);
         await ctx.replyWithMarkdownV2(
-          'No payees found. Please add a payee first.',
+          'No Recipients found\\. Please add a recipient before continuing\\.',
           {
             reply_markup: keyboard.reply_markup,
           },
@@ -80,17 +76,22 @@ export class EmailTransfer {
 
       // Add navigation buttons at the bottom
       payeeButtons.push([
-        Markup.button.callback('❌ Cancel', EmailTransferActions.NAV_CANCEL),
+        Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL),
       ]);
 
-      await ctx.replyWithMarkdownV2('Please select a payee:', {
+      await ctx.replyWithMarkdownV2('Please select a recipient:', {
         reply_markup: Markup.inlineKeyboard(payeeButtons).reply_markup,
       });
 
       ctx.wizard.next();
     } catch (error) {
-      console.error('Error fetching payees:', error);
-      await ctx.reply('❌ Failed to fetch payees. Please try again.');
+      const message =
+        error.response?.data?.message || 'Failed to fetch recipients';
+      await ctx.replyWithMarkdownV2(`❌ ${escapeMarkdownV2(message)}`, {
+        reply_markup: Markup.inlineKeyboard([
+          [Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL)],
+        ]).reply_markup,
+      });
     }
   }
 
@@ -109,7 +110,7 @@ export class EmailTransfer {
         reply_markup: Markup.inlineKeyboard([
           Markup.button.callback(
             '❌ Cancel Transfer',
-            EmailTransferActions.NAV_CANCEL,
+            EmailTransferActions.CANCEL,
           ),
         ]).reply_markup,
       });
@@ -123,7 +124,7 @@ export class EmailTransfer {
     await ctx.answerCbQuery(`Selected payee: ${payeeId}`);
 
     const keyboard = Markup.inlineKeyboard([
-      Markup.button.callback('❌ Cancel', EmailTransferActions.NAV_CANCEL),
+      Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL),
     ]);
 
     // Ask for the amount to transfer
@@ -140,8 +141,8 @@ export class EmailTransfer {
   @WizardStep(2)
   async askAmount(ctx: WizardContext) {
     const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🔙 Back', EmailTransferActions.NAV_BACK)],
-      [Markup.button.callback('❌ Cancel', EmailTransferActions.NAV_CANCEL)],
+      [Markup.button.callback('🔙 Back', EmailTransferActions.BACK)],
+      [Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL)],
     ]);
     // Receive and validate the amount
     if (!(ctx.message as { text: string })?.text) {
@@ -182,10 +183,10 @@ export class EmailTransfer {
 
     // Add navigation buttons at the bottom
     buttonRows.push([
-      Markup.button.callback('🔙 Back', EmailTransferActions.NAV_BACK),
+      Markup.button.callback('🔙 Back', EmailTransferActions.BACK),
     ]);
     buttonRows.push([
-      Markup.button.callback('❌ Cancel', EmailTransferActions.NAV_CANCEL),
+      Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL),
     ]);
 
     await ctx.replyWithMarkdownV2(
@@ -240,15 +241,15 @@ export class EmailTransfer {
           EmailTransferActions.CONFIRM_TRANSFER,
         ),
       ],
-      [Markup.button.callback('🔙 Back', EmailTransferActions.NAV_BACK)],
-      [Markup.button.callback('❌ Cancel', EmailTransferActions.NAV_CANCEL)],
+      [Markup.button.callback('🔙 Back', EmailTransferActions.BACK)],
+      [Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL)],
     ]);
 
     await ctx.replyWithMarkdownV2(
       `*Confirm Transfer Details*\n\n` +
-        `👤 *Payee:* ${(payee.nickName || payee.displayName).replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&')} \\(${payee.email.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&')}\\)\n` +
-        `💸 *Amount:* ${amount.toString().replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&')} USD\n` +
-        `📝 *Purpose:* ${purpose.label.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&')}`,
+        `👤 *Payee:* ${escapeMarkdownV2(payee.nickName || payee.displayName)} \\(${escapeMarkdownV2(payee.email)}\\)\n` +
+        `💸 *Amount:* ${escapeMarkdownV2(amount.toString())} USD\n` +
+        `📝 *Purpose:* ${escapeMarkdownV2(purpose.label)}`,
       {
         reply_markup: confirmKeyboard.reply_markup,
       },
@@ -281,9 +282,9 @@ export class EmailTransfer {
       // Notify the user
       await ctx.replyWithMarkdownV2(
         `✅ Transfer successful\\!\n\n` +
-          `👤 *Payee:* ${(payee.nickName || payee.displayName).replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&')}\n` +
-          `💸 *Amount:* ${amount.toString().replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&')} USD\n` +
-          `📝 *Purpose:* ${purpose.value.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&')}`,
+          `👤 *Payee:* ${payee.nickName || payee.displayName}\n` +
+          `💸 *Amount:* ${amount.toString()} USD\n` +
+          `📝 *Purpose:* ${purpose.value}`,
       );
 
       // Exit the scene
@@ -308,12 +309,12 @@ export class EmailTransfer {
     ctx.scene.enter(ADD_PAYEE_SCENE_ID);
   }
 
-  @Action(EmailTransferActions.NAV_BACK)
+  @Action(EmailTransferActions.BACK)
   async navigateBack(ctx: WizardContext) {
     ctx.wizard.back();
   }
 
-  @Action(EmailTransferActions.NAV_CANCEL)
+  @Action(EmailTransferActions.CANCEL)
   async navigateCancel(ctx: WizardContext) {
     await ctx.answerCbQuery('❌ Cancelling Transfer...');
     await ctx.scene.leave();

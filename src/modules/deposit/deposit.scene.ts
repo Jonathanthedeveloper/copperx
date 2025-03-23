@@ -5,6 +5,7 @@ import { Markup } from 'telegraf';
 import { KeyboardsService } from '../shared/keyboard.service';
 import qrcode from 'qrcode';
 import { RequireAuth } from '../auth/auth.decorator';
+import { escapeMarkdownV2 } from 'src/utils';
 
 export const DEPOSIT_SCENE_ID = 'DEPOSIT_SCENE';
 
@@ -73,9 +74,9 @@ export class DepositScene {
 
 To deposit funds to your wallet:
 
-1\\. Send your funds to this address: \`${wallet.walletAddress.replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1')}\`
+1\\. Send your funds to this address: \`${escapeMarkdownV2(wallet.walletAddress)}\`
 
-2\\. Make sure to select the correct network: *${this.walletService.networks[wallet.network].replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1')}*
+2\\. Make sure to select the correct network: *${escapeMarkdownV2(this.walletService.networks[wallet.network])}*
 
 ⚠️ *Important:*
 • Only send supported tokens
