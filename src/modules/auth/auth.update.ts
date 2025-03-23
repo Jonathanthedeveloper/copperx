@@ -6,6 +6,7 @@ import { KeyboardsService } from '../shared/keyboard.service';
 import { RequireAuth } from './auth.decorator';
 import { SceneContext } from 'telegraf/typings/scenes';
 import { AUTH_SCENE_ID } from './auth.scene';
+import { escapeMarkdownV2 } from 'src/utils';
 
 @Update()
 export class AuthUpdate {

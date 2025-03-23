@@ -6,6 +6,7 @@ import { SceneContext, WizardContext } from 'telegraf/typings/scenes';
 import { ADD_PAYEE_SCENE_ID } from './scenes/add-payee.scene';
 import { REMOVE_PAYEE_SCENE_ID } from './scenes/remove-payee.scene';
 import { RequireAuth } from '../auth/auth.decorator';
+import { escapeMarkdownV2 } from 'src/utils';
 
 @Update()
 @RequireAuth()
@@ -43,11 +44,11 @@ export class PayeeUpdate {
     const payeeList = payees.data
       .map(
         (payee, index) =>
-          `*${(index + 1).toString().replace(/[._-]/g, '\\$&')}\\. ${(
-            payee.displayName || payee.nickName
-          ).replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&')}*\n` +
-          `✉️ *Email:* ${payee.email.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&')}\n` +
-          `📞 *Phone:* ${(payee.phoneNumber || 'N/A').replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&')}\n` +
+          `*${escapeMarkdownV2((index + 1).toString())}\\. ${escapeMarkdownV2(
+            payee.displayName || payee.nickName,
+          )}*\n` +
+          `✉️ *Email:* ${escapeMarkdownV2(payee.email)}\n` +
+          `📞 *Phone:* ${escapeMarkdownV2(payee.phoneNumber || 'N/A')}\n` +
           `🏦 *Bank Account:* ${payee.hasBankAccount ? '✅' : '❌'}\n\n`,
       )
       .join('\n');

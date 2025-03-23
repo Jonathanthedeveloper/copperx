@@ -6,6 +6,7 @@ import { isEmail } from 'class-validator';
 import { Actions } from 'src/enums/actions.enums';
 import { KeyboardsService } from 'src/modules/shared/keyboard.service';
 import { RequireAuth } from 'src/modules/auth/auth.decorator';
+import { escapeMarkdownV2 } from 'src/utils';
 
 export const ADD_PAYEE_SCENE_ID = 'ADD_PAYEE_SCENE_ID';
 
@@ -102,9 +103,9 @@ export class AddPayee {
     await ctx.replyWithMarkdownV2(
       `*Confirm Payee Details*\n\n` +
         // @ts-expect-error
-        `✉️ *Email:* ${ctx.wizard.state.email.replace(/[._-]/g, '\\$&')}\n` +
+        `✉️ *Email:* ${escapeMarkdownV2(ctx.wizard.state.email)}\n` +
         // @ts-expect-error
-        `👤 *Nickname:* ${ctx.wizard.state.nickname.replace(/[[\]()~`>#+=|{}.!-]/g, '\\$&')}`,
+        `👤 *Nickname:* ${escapeMarkdownV2(ctx.wizard.state.nickname)}`,
       {
         reply_markup: confirmKeyboard.reply_markup,
       },
@@ -130,8 +131,8 @@ export class AddPayee {
       // Notify the user
       await ctx.replyWithMarkdownV2(
         `✅ Payee created successfully\\!\n\n` +
-          `✉️ *Email:* ${payee.email.replace(/[._-]/g, '\\$&')}\n` +
-          `👤 *Nickname:* ${payee.nickName}`,
+          `✉️ *Email:* ${escapeMarkdownV2(payee.email)}\n` +
+          `👤 *Nickname:* ${escapeMarkdownV2(payee.nickName)}`,
         {
           reply_markup: Markup.inlineKeyboard([
             [Markup.button.callback('❌ Close', AddPayeeActions.CLOSE)],

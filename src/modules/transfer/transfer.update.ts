@@ -32,20 +32,8 @@ export class TransferUpdate {
   @Action(Actions.TRANSFER_HISTORY)
   async viewTransactions(@Ctx() ctx: Context) {
     try {
-      // Check if user is logged in
-      if (!ctx.session.auth?.access_token) {
-        const keyboard = this.keyboard.getUnauthenticatedKeyboard();
-        await ctx.replyWithMarkdownV2(
-          'You are not logged in\\. Please login first\\.',
-          {
-            reply_markup: keyboard.reply_markup,
-          },
-        );
-        return;
-      }
-
       const transactions = await this.transferService.getTransferHistory(
-        ctx.session.auth.access_token,
+        ctx.session.auth?.access_token ?? '',
       );
 
       const message = transactions.data
