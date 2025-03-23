@@ -4,6 +4,13 @@ import { Wallet, WalletBalance } from 'src/types';
 
 @Injectable()
 export class WalletService {
+  networks = {
+    '137': 'Polygon',
+    '42161': 'Arbitrum',
+    '8453': 'Base',
+    '23434': 'Starknet',
+  };
+
   constructor(private readonly copperx: CopperxApiService) {}
 
   async getWallets(accessToken: string): Promise<Wallet[]> {

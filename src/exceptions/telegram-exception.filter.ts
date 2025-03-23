@@ -10,10 +10,6 @@ export class TelegramExceptionFilter implements ExceptionFilter {
     this.logger.error(exception.name);
     this.logger.error(exception.message);
     this.logger.error(exception.description);
-
-    return {
-      statusCode: 500,
-      message: 'Internal server error.',
-    };
+    this.logger.log(exception);
   }
 }

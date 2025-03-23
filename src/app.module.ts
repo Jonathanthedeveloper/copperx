@@ -10,49 +10,47 @@ import { AuthModule } from './modules/auth/auth.module';
 import { SharedModule } from './modules/shared/shared.module';
 import { MySQL } from '@telegraf/session/mysql';
 import { session } from 'telegraf';
-import { NestJsPusherOptions, PusherModule } from 'nestjs-pusher';
+import { WalletModule } from './modules/wallet/wallet.module';
+import { TransferModule } from './modules/transfer/transfer.module';
+import { DepositModule } from './modules/deposit/deposit.module';
+import { PayeeModule } from './modules/payee/payee.module';
+import { TransactionsModule } from './modules/transactions/transactions.module';
+import { PointsModule } from './modules/points/points.module';
+import { ReferralModule } from './modules/referral/referral.module';
+import { KycModule } from './modules/kyc/kyc.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    PusherModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService): NestJsPusherOptions => {
-        return {
-          options: {
-            appId: configService.get<string>('PUSHER_APP_ID') || '',
-            key: configService.get<string>('PUSHER_KEY') || '',
-            secret: configService.get<string>('PUSHER_SECRET') || '',
-            cluster: configService.get<string>('PUSHER_CLUSTER') || '',
-          },
-          chunkingOptions: {
-            limit: 9216,
-            enabled: true,
-          },
-        };
-      },
-    }),
     TelegrafModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
         const store = MySQL({
-          host: '127.0.0.1',
-          database: 'copperx',
-          user: 'root',
-          password: '',
+          host: configService.get<string>('DATABASE_HOST'),
+          database: configService.get<string>('DATABASE_NAME'),
+          user: configService.get<string>('DATABASE_USER'),
+          password: configService.get<string>('DATABASE_PASSWORD'),
         });
         return {
           token: configService.get<string>('TELEGRAM_BOT_TOKEN') || '',
           middlewares: [session({ store })],
+          botName: 'CopperX Wallet',
         };
       },
     }),
     SharedModule,
     AuthModule,
+    WalletModule,
+    TransferModule,
+    DepositModule,
+    PayeeModule,
+    TransactionsModule,
+    PointsModule,
+    ReferralModule,
+    KycModule,
   ],
   controllers: [AppController],
   providers: [

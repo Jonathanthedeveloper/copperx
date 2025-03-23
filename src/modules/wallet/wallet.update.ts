@@ -3,8 +3,10 @@ import { KeyboardsService } from '../shared/keyboard.service';
 import { Context, Telegraf } from 'telegraf';
 import { WalletService } from './wallet.service';
 import { Actions } from 'src/enums/actions.enums';
+import { RequireAuth } from '../auth/auth.decorator';
 
 @Update()
+@RequireAuth()
 export class WalletUpdate {
   constructor(
     @InjectBot() bot: Telegraf<Context>,
@@ -26,6 +28,8 @@ export class WalletUpdate {
         );
         return;
       }
+
+      ctx.answerCbQuery('🔃 Fetching Wallets');
 
       // Fetch wallets and balances
       const wallets = await this.walletService.getWallets(
@@ -54,7 +58,7 @@ export class WalletUpdate {
             return (
               `🔐 *${wallet.walletType}* ${wallet.isDefault ? '\\(Default\\)' : ''}\n` +
               `📌 Address: \`${wallet.walletAddress}\`\n` +
-              `🌐 Network: ${wallet.network}\n` +
+              `🌐 Network: ${this.walletService.networks[wallet.network]}\n` +
               `💰 Balances:\n${balanceText}`
             );
           })
@@ -110,6 +114,8 @@ export class WalletUpdate {
   @Action(/set_default_wallet_(.*)/)
   async handleWalletSelection(@Ctx() ctx: Context) {
     try {
+      ctx.answerCbQuery('🔃 Setting Default Wallet');
+
       // Extract walletId from the callback data
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const walletId = (ctx as any).match[1];

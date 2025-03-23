@@ -4,5 +4,6 @@ import { WalletUpdate } from './wallet.update';
 
 @Module({
   providers: [WalletService, WalletUpdate],
+  exports: [WalletService],
 })
 export class WalletModule {}
