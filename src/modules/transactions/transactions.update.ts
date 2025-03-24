@@ -1,9 +1,10 @@
-import { Action, Ctx, Update } from 'nestjs-telegraf';
+import { Action, Command, Ctx, Update } from 'nestjs-telegraf';
 import { Actions } from 'src/enums/actions.enums';
 import { Context, Markup } from 'telegraf';
 import { TransactionsService } from './transactions.service';
-import { escapeMarkdownV2 } from 'src/utils';
+import { escapeMarkdownV2, handleErrorResponses } from 'src/utils';
 import { RequireAuth } from '../auth/auth.decorator';
+import { Commands } from 'src/enums/commands.enum';
 
 @Update()
 @RequireAuth()
@@ -11,8 +12,24 @@ export class TransactionUpdate {
   constructor(private readonly transactionService: TransactionsService) {}
 
   @Action(Actions.TRANSACTIONS)
-  async listTransactions(@Ctx() ctx: Context) {
+  async handleTransactionAction(@Ctx() ctx: Context) {
     ctx.answerCbQuery('🔃 Fetching Transactions');
+    await this.listTransactions(ctx);
+  }
+
+  @Command(Commands.TRANSACTIONS)
+  async handleTransactionsCommand(@Ctx() ctx: Context) {
+    const [message] = await Promise.allSettled([
+      ctx.reply('🔃 Fetching Your Transaction History...'),
+      this.listTransactions(ctx),
+    ]);
+
+    if (message.status === 'fulfilled') {
+      await ctx.deleteMessage(message.value.message_id);
+    }
+  }
+
+  async listTransactions(ctx) {
     try {
       // Fetch the first page of transactions
       const transactions = await this.transactionService.getAllTransactions(
@@ -35,14 +52,17 @@ export class TransactionUpdate {
 
       // Format the transactions into a message
       const transactionList = transactions.data
-        .map(
-          (tx, index) =>
+        .map((tx, index) => {
+          const date = new Date(tx.createdAt);
+          const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+          return (
             `*${index + 1}\\. ${escapeMarkdownV2(tx.type.toUpperCase())}*\n` +
-            `📅 *Date:* ${escapeMarkdownV2(new Date(tx.createdAt).toLocaleString())}\n` +
+            `📅 *Date:* ${escapeMarkdownV2(formattedDate)}\n` +
             `💸 *Amount:* ${escapeMarkdownV2(tx.fromAmount)} ${escapeMarkdownV2(tx.fromCurrency)}\n` +
             `🔄 *Status:* ${escapeMarkdownV2(tx.status)}\n` +
-            `---`,
-        )
+            `\\-\\-\\-`
+          );
+        })
         .join('\n');
 
       const message = `📋 *Transactions*\n\n${transactionList}`;
@@ -67,8 +87,13 @@ export class TransactionUpdate {
         reply_markup: keyboard.reply_markup,
       });
     } catch (error) {
-      console.error('Error fetching transactions:', error);
-      await ctx.reply('❌ Failed to fetch transactions. Please try again.');
+      console.log(error);
+      await handleErrorResponses({
+        ctx,
+        defaultMessage: 'Failed to fetch transactions',
+        error,
+        buttons: [{ text: '🔃 Retry', action: Actions.TRANSACTIONS }],
+      });
     }
   }
 
@@ -100,11 +125,11 @@ export class TransactionUpdate {
             `📅 *Date:* ${escapeMarkdownV2(new Date(tx.createdAt).toLocaleString())}\n` +
             `💸 *Amount:* ${escapeMarkdownV2(tx.fromAmount)} ${escapeMarkdownV2(tx.fromCurrency)}\n` +
             `🔄 *Status:* ${escapeMarkdownV2(tx.status)}\n` +
-            `---`,
+            `\\-\\-\\-`,
         )
         .join('\n');
 
-      const message = `📋 *Transactions (Page ${page})*\n\n${transactionList}`;
+      const message = `📋 *Transactions \\(Page ${page}\\)*\n\n${transactionList}`;
 
       // Create inline keyboard with actions
       const keyboardButtons = [
@@ -126,19 +151,15 @@ export class TransactionUpdate {
         reply_markup: keyboard.reply_markup,
       });
     } catch (error) {
-      console.error(
-        '📃 *Transactions*\n\n❌ Error fetching more transactions\\:',
+      await handleErrorResponses({
+        ctx,
+        defaultMessage:
+          '📃 *Transactions*\n\n❌ Failed to fetch more transactions\\. Please try again\\.',
         error,
-      );
-      await ctx.replyWithMarkdownV2(
-        '📃 *Transactions*\n\n❌ Failed to fetch more transactions\\. Please try again\\.',
-        {
-          reply_markup: Markup.inlineKeyboard([
-            [Markup.button.callback('🔃 Refresh', `REFRESH:${page}`)],
-            [Markup.button.callback('❌ Close', Actions.CLOSE)],
-          ]).reply_markup,
-        },
-      );
+        buttons: [{ text: '🔃 Retry', action: `REFRESH:${page}` }],
+        header: 'Error fetching more transactions',
+        prefix: '📃 *Transactions*\n\n❌',
+      });
     }
   }
 
@@ -180,11 +201,11 @@ export class TransactionUpdate {
             `📅 *Date:* ${escapeMarkdownV2(new Date(tx.createdAt).toLocaleString())}\n` +
             `💸 *Amount:* ${escapeMarkdownV2(tx.fromAmount)} ${escapeMarkdownV2(tx.fromCurrency)}\n` +
             `🔄 *Status:* ${escapeMarkdownV2(tx.status)}\n` +
-            `---`,
+            `\\-\\-\\-`,
         )
         .join('\n');
 
-      const message = `*📋 Transactions (Page ${page})*\n\n${transactionList}`;
+      const message = `*📋 Transactions \\(Page ${page}\\)*\n\n${transactionList}`;
 
       // Create inline keyboard with actions
       const keyboardButtons = [
@@ -207,20 +228,14 @@ export class TransactionUpdate {
       });
     } catch (error) {
       console.error('Error refreshing transactions:', error);
-      await ctx.reply(
-        '📃 *Transactions*\n\n❌ Failed to refresh transactions\\. Please try again\\.',
-        {
-          reply_markup: Markup.inlineKeyboard([
-            [Markup.button.callback('🔃 Refresh', `REFRESH:${page}`)],
-            [Markup.button.callback('❌ Close', Actions.CLOSE)],
-          ]).reply_markup,
-        },
-      );
+      await handleErrorResponses({
+        ctx,
+        error,
+        defaultMessage: 'Failed to refresh transactions',
+        buttons: [{ text: '🔃 Retry', action: `REFRESH:${page}` }],
+        header: 'Error refreshing transactions',
+        prefix: '📃 *Transactions*\n\n❌',
+      });
     }
-  }
-
-  @Action(Actions.CLOSE)
-  async close(@Ctx() ctx: Context) {
-    await ctx.deleteMessage();
   }
 }

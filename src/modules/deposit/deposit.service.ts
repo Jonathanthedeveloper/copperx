@@ -57,7 +57,6 @@ export class DepositService {
               }
             })
             .catch((error) => {
-              console.error('Pusher authorization error:', error);
               callback(error as Error, null);
             });
         },
@@ -70,12 +69,15 @@ export class DepositService {
     channel.bind('pusher:subscription_succeeded', () => {
       this.bot.telegram.sendMessage(
         chatId,
-        `🔔 *Sucessfully Subscribed to deposit events*`,
+        `✅ Successfully subscribed to deposit notifications!\n\n📥 You will now receive real-time alerts whenever a new deposit is made to your account.`,
       );
     });
 
     channel.bind('pusher:subscription_error', (error) => {
-      console.error('Subscription error:', error);
+      this.bot.telegram.sendMessage(
+        chatId,
+        `❌ Failed to subscribe to deposit notifications`,
+      );
     });
 
     // Bind to the deposit event

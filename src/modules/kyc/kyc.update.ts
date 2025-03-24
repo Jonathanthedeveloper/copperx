@@ -1,9 +1,10 @@
-import { Action, Ctx, Update } from 'nestjs-telegraf';
+import { Action, Command, Ctx, Update } from 'nestjs-telegraf';
 import { Actions } from 'src/enums/actions.enums';
 import { KycService } from './kyc.service';
 import { Context, Markup } from 'telegraf';
-import { escapeMarkdownV2 } from 'src/utils';
+import { escapeMarkdownV2, handleErrorResponses } from 'src/utils';
 import { RequireAuth } from '../auth/auth.decorator';
+import { Commands } from 'src/enums/commands.enum';
 
 @Update()
 @RequireAuth()
@@ -38,8 +39,24 @@ export class KycUpdate {
   };
 
   @Action(Actions.KYC)
-  async handleKyc(@Ctx() ctx: Context) {
+  async kyc(@Ctx() ctx: Context) {
     ctx.answerCbQuery('🔃 Checking Kyc Status');
+    this.handleKyc(ctx);
+  }
+
+  @Command(Commands.KYC)
+  async kycCommand(@Ctx() ctx: Context) {
+    const [message] = await Promise.allSettled([
+      ctx.reply('🔃 Checking Kyc Status'),
+      this.handleKyc(ctx),
+    ]);
+
+    if (message.status === 'fulfilled') {
+      await ctx.deleteMessage(message.value.message_id);
+    }
+  }
+
+  async handleKyc(ctx: Context) {
     const accessToken = ctx.session.auth?.access_token || '';
 
     try {
@@ -105,10 +122,14 @@ export class KycUpdate {
       );
       return;
     } catch (error) {
-      console.error('Error fetching KYC status:', error);
-      await ctx.reply(
-        'An error occurred while fetching your KYC status. Please try again later.',
-      );
+      await handleErrorResponses({
+        ctx,
+        error,
+        defaultMessage:
+          'An error occurred while fetching your KYC status. Please try again later.',
+        buttons: [{ text: '🔃 Retry', action: Actions.KYC }],
+        header: '🛡️ KYC',
+      });
     }
   }
 }

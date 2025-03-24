@@ -1,11 +1,12 @@
-import { Action, Ctx, Wizard, WizardStep } from 'nestjs-telegraf';
+import { Action, Command, Ctx, Wizard, WizardStep } from 'nestjs-telegraf';
 import { Markup } from 'telegraf';
 import { WizardContext } from 'telegraf/typings/scenes';
 import { PayeeService } from '../payee.service';
 import { Actions } from 'src/enums/actions.enums';
 import { KeyboardsService } from 'src/modules/shared/keyboard.service';
-import { escapeMarkdownV2 } from 'src/utils';
+import { escapeMarkdownV2, handleErrorResponses } from 'src/utils';
 import { RequireAuth } from 'src/modules/auth/auth.decorator';
+import { Commands } from 'src/enums/commands.enum';
 
 export const REMOVE_PAYEE_SCENE_ID = 'REMOVE_PAYEE_SCENE_ID';
 
@@ -27,9 +28,7 @@ export class RemovePayee {
   ) {}
 
   @WizardStep(1)
-  async selectPayee(ctx: WizardContext) {
-    ctx.answerCbQuery('🔃 Fetching Recipients...');
-
+  async selectPayee(@Ctx() ctx: WizardContext) {
     // @ts-expect-error
     const accessToken = ctx.session.auth?.access_token ?? '';
 
@@ -53,7 +52,8 @@ export class RemovePayee {
             ]).reply_markup,
           },
         );
-        return ctx.scene.leave();
+        ctx.scene.leave();
+        return;
       }
 
       // Create a list of payees for the user to select
@@ -66,7 +66,7 @@ export class RemovePayee {
 
       // Add a cancel button
       payeeButtons.push(
-        Markup.button.callback('❌ Cancel', RemovePayeeActions.CANCEL),
+        Markup.button.callback('🚫 Cancel', RemovePayeeActions.CANCEL),
       );
 
       // Display the list of payees
@@ -78,16 +78,12 @@ export class RemovePayee {
         },
       );
     } catch (error) {
-      console.error('Error fetching recipients:', error);
-      await ctx.replyWithMarkdownV2(
-        '❌ An error occurred while fetching recipients\\. Please try again later\\.',
-        {
-          reply_markup: Markup.inlineKeyboard([
-            [Markup.button.callback('🔃 Retry', RemovePayeeActions.RETRY)],
-            [Markup.button.callback('❌ Cancel', RemovePayeeActions.CANCEL)],
-          ]).reply_markup,
-        },
-      );
+      await handleErrorResponses({
+        ctx,
+        error,
+        defaultMessage: 'Failed to fetch recipients',
+        buttons: [{ text: '🔃 Retry', action: RemovePayeeActions.RETRY }],
+      });
     }
   }
 
@@ -118,23 +114,18 @@ export class RemovePayee {
         {
           reply_markup: Markup.inlineKeyboard([
             [Markup.button.callback('✅ Confirm', RemovePayeeActions.CONFIRM)],
-            [Markup.button.callback('🔙 Back', RemovePayeeActions.BACK)],
-            [Markup.button.callback('❌ Cancel', RemovePayeeActions.CANCEL)],
+            [Markup.button.callback('🚫 Cancel', RemovePayeeActions.CANCEL)],
           ]).reply_markup,
         },
       );
     } catch (error) {
-      console.error('Error fetching payee:', error);
-      await ctx.replyWithMarkdownV2(
-        '❌ An error occurred while fetching the payee\\. Please try again later\\.',
-        {
-          reply_markup: Markup.inlineKeyboard([
-            [Markup.button.callback('🔃 Retry', RemovePayeeActions.RETRY)],
-            [Markup.button.callback('❌ Cancel', RemovePayeeActions.CANCEL)],
-          ]).reply_markup,
-        },
-      );
-      return ctx.scene.leave();
+      await handleErrorResponses({
+        ctx,
+        error,
+        defaultMessage: 'Failed to fetch payee',
+        buttons: [{ text: '🔃 Retry', action: RemovePayeeActions.RETRY }],
+      });
+      ctx.scene.leave();
     }
   }
 
@@ -146,11 +137,13 @@ export class RemovePayee {
         '❌ No payee selected\\. Please try again\\.',
         {
           reply_markup: Markup.inlineKeyboard([
-            [Markup.button.callback('❌ Cancel', RemovePayeeActions.CANCEL)],
+            [Markup.button.callback('🚫 Cancel', RemovePayeeActions.CANCEL)],
           ]).reply_markup,
         },
       );
-      return ctx.scene.leave();
+
+      ctx.scene.leave();
+      return;
     }
 
     // @ts-expect-error
@@ -176,16 +169,14 @@ export class RemovePayee {
           reply_markup: this.keyboard.getMainKeyboard().reply_markup,
         },
       );
+      ctx.scene.leave();
     } catch (error) {
-      console.error('Error deleting payee:', error);
-      await ctx.replyWithMarkdownV2(
-        '❌ An error occurred while removing the payee\\. Please try again later\\.',
-        {
-          reply_markup: this.keyboard.getMainKeyboard().reply_markup,
-        },
-      );
-    } finally {
-      return ctx.scene.leave();
+      await handleErrorResponses({
+        ctx,
+        error,
+        defaultMessage: 'Failed to remove payee',
+        buttons: [{ text: '🔃 Retry', action: RemovePayeeActions.RETRY }],
+      });
     }
   }
 
@@ -195,17 +186,28 @@ export class RemovePayee {
   }
 
   @Action(RemovePayeeActions.CLOSE)
-  async close(ctx: WizardContext) {
+  async close(@Ctx() ctx: WizardContext) {
     await ctx.deleteMessage();
     await ctx.scene.leave();
   }
 
+  @Action(RemovePayeeActions.RETRY)
+  async retry(@Ctx() ctx: WizardContext) {
+    ctx.answerCbQuery('🔃 Retrying...');
+    await ctx.scene.reenter();
+  }
+
   @Action(RemovePayeeActions.CANCEL)
-  async cancel(ctx: WizardContext) {
+  async onCancel(@Ctx() ctx: WizardContext) {
     ctx.answerCbQuery('🚫 Cancelling...');
-    await ctx.replyWithMarkdownV2('❌ Payee removal cancelled\\.', {
+    await ctx.replyWithMarkdownV2('❌ Recipient removal cancelled\\.', {
       reply_markup: this.keyboard.getMainKeyboard().reply_markup,
     });
+    await ctx.scene.leave();
+  }
+
+  @Command(Commands.Cancel)
+  async cancel(@Ctx() ctx: WizardContext) {
     await ctx.scene.leave();
   }
 }
