@@ -1,4 +1,4 @@
-import { Action, Ctx, Wizard, WizardStep } from 'nestjs-telegraf';
+import { Action, Command, Ctx, Wizard, WizardStep } from 'nestjs-telegraf';
 import { Markup } from 'telegraf';
 import { WizardContext } from 'telegraf/typings/scenes';
 import { TransferService } from '../transfer.service';
@@ -7,7 +7,8 @@ import { PayeeService } from 'src/modules/payee/payee.service';
 import { ADD_PAYEE_SCENE_ID } from 'src/modules/payee/scenes/add-payee.scene';
 import { Payee, PurposeCode } from 'src/types';
 import { RequireAuth } from 'src/modules/auth/auth.decorator';
-import { escapeMarkdownV2 } from 'src/utils';
+import { escapeMarkdownV2, handleErrorResponses } from 'src/utils';
+import { Commands } from 'src/enums/commands.enum';
 
 // Define the scene ID
 export const EMAIL_TRANSFER_SCENE_ID = 'EMAIL_TRANSFER_SCENE';
@@ -29,14 +30,6 @@ export class EmailTransfer {
     private readonly payeeService: PayeeService,
   ) {}
 
-  private getNavigationKeyboard() {
-    return Markup.inlineKeyboard([
-      [Markup.button.callback('🔙 Back', EmailTransferActions.BACK)],
-      [Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL)],
-      [Markup.button.callback('❌ Close', EmailTransferActions.CLOSE)],
-    ]);
-  }
-
   @WizardStep(1)
   async askPayee(ctx: WizardContext) {
     try {
@@ -55,7 +48,7 @@ export class EmailTransfer {
               EmailTransferActions.ADD_PAYEE,
             ),
           ],
-          [Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL)],
+          [Markup.button.callback('🚫 Cancel', EmailTransferActions.CANCEL)],
         ]);
         await ctx.replyWithMarkdownV2(
           'No Recipients found\\. Please add a recipient before continuing\\.',
@@ -76,7 +69,7 @@ export class EmailTransfer {
 
       // Add navigation buttons at the bottom
       payeeButtons.push([
-        Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL),
+        Markup.button.callback('🚫 Cancel', EmailTransferActions.CANCEL),
       ]);
 
       await ctx.replyWithMarkdownV2('Please select a recipient:', {
@@ -85,68 +78,75 @@ export class EmailTransfer {
 
       ctx.wizard.next();
     } catch (error) {
-      const message =
-        error.response?.data?.message || 'Failed to fetch recipients';
-      await ctx.replyWithMarkdownV2(`❌ ${escapeMarkdownV2(message)}`, {
-        reply_markup: Markup.inlineKeyboard([
-          [Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL)],
-        ]).reply_markup,
+      await handleErrorResponses({
+        ctx,
+        error,
+        defaultMessage: 'Failed to fetch recipients',
       });
     }
   }
 
   @Action(/^PAYEE:(.+)$/)
   async handlePayeeSelection(ctx: WizardContext) {
-    // Extract the payee ID from callback data
-    const payeeId =
-      (ctx.callbackQuery as { data: string })?.data?.split(':')[1] || '';
+    try {
+      // Extract the payee ID from callback data
+      const payeeId =
+        (ctx.callbackQuery as { data: string })?.data?.split(':')[1] || '';
 
-    const accessToken = (ctx.session as any).auth?.access_token;
+      const accessToken = (ctx.session as any).auth?.access_token;
 
-    const payee = await this.payeeService.getPayeeById(accessToken, payeeId);
+      const payee = await this.payeeService.getPayeeById(accessToken, payeeId);
 
-    if (!payee) {
-      ctx.replyWithMarkdownV2('Invalid Payee Selected', {
-        reply_markup: Markup.inlineKeyboard([
-          Markup.button.callback(
-            '❌ Cancel Transfer',
-            EmailTransferActions.CANCEL,
-          ),
-        ]).reply_markup,
+      if (!payee) {
+        ctx.replyWithMarkdownV2('Invalid Payee Selected', {
+          reply_markup: Markup.inlineKeyboard([
+            Markup.button.callback(
+              '🚫 Cancel Transfer',
+              EmailTransferActions.CANCEL,
+            ),
+          ]).reply_markup,
+        });
+      }
+
+      // Store the payee ID in wizard state
+      // @ts-expect-error
+      ctx.wizard.state.payee = payee;
+
+      // Acknowledge the selection
+      await ctx.answerCbQuery(`Selected recipient: ${payeeId}`);
+
+      const keyboard = Markup.inlineKeyboard([
+        Markup.button.callback('🚫 Cancel', EmailTransferActions.CANCEL),
+      ]);
+
+      // Ask for the amount to transfer
+      await ctx.replyWithMarkdownV2(
+        'Please enter the amount \\(USDT\\) you want to transfer:',
+        {
+          reply_markup: keyboard.reply_markup,
+        },
+      );
+
+      ctx.wizard.next();
+    } catch (error) {
+      await handleErrorResponses({
+        ctx,
+        error,
+        defaultMessage: 'Failed to fetch recipient info',
       });
     }
-
-    // Store the payee ID in wizard state
-    // @ts-expect-error
-    ctx.wizard.state.payee = payee;
-
-    // Acknowledge the selection
-    await ctx.answerCbQuery(`Selected payee: ${payeeId}`);
-
-    const keyboard = Markup.inlineKeyboard([
-      Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL),
-    ]);
-
-    // Ask for the amount to transfer
-    await ctx.replyWithMarkdownV2(
-      'Please enter the amount \\(USDT\\) you want to transfer:',
-      {
-        reply_markup: keyboard.reply_markup,
-      },
-    );
-
-    ctx.wizard.next();
   }
 
   @WizardStep(2)
   async askAmount(ctx: WizardContext) {
     const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🔙 Back', EmailTransferActions.BACK)],
-      [Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL)],
+      [Markup.button.callback('◀️ Back', EmailTransferActions.BACK)],
+      [Markup.button.callback('🚫 Cancel', EmailTransferActions.CANCEL)],
     ]);
+
     // Receive and validate the amount
     if (!(ctx.message as { text: string })?.text) {
-      await ctx.replyWithMarkdownV2('Please enter a valid amount \\(USD\\):', {
+      await ctx.replyWithMarkdownV2('Please enter a valid amount \\(USDT\\):', {
         reply_markup: keyboard.reply_markup,
       });
       return;
@@ -156,7 +156,14 @@ export class EmailTransfer {
 
     // Validate the amount
     if (isNaN(amount)) {
-      await ctx.replyWithMarkdownV2('Please enter a valid amount \\(USD\\):', {
+      await ctx.replyWithMarkdownV2('Please enter a valid amount \\(USDT\\):', {
+        reply_markup: keyboard.reply_markup,
+      });
+      return;
+    }
+
+    if (amount <= 0) {
+      await ctx.replyWithMarkdownV2('Please enter a valid amount in USDT', {
         reply_markup: keyboard.reply_markup,
       });
       return;
@@ -183,10 +190,10 @@ export class EmailTransfer {
 
     // Add navigation buttons at the bottom
     buttonRows.push([
-      Markup.button.callback('🔙 Back', EmailTransferActions.BACK),
+      Markup.button.callback('◀️ Back', EmailTransferActions.BACK),
     ]);
     buttonRows.push([
-      Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL),
+      Markup.button.callback('🚫 Cancel', EmailTransferActions.CANCEL),
     ]);
 
     await ctx.replyWithMarkdownV2(
@@ -241,8 +248,8 @@ export class EmailTransfer {
           EmailTransferActions.CONFIRM_TRANSFER,
         ),
       ],
-      [Markup.button.callback('🔙 Back', EmailTransferActions.BACK)],
-      [Markup.button.callback('❌ Cancel', EmailTransferActions.CANCEL)],
+      [Markup.button.callback('◀️ Back', EmailTransferActions.BACK)],
+      [Markup.button.callback('🚫 Cancel', EmailTransferActions.CANCEL)],
     ]);
 
     await ctx.replyWithMarkdownV2(
@@ -256,7 +263,7 @@ export class EmailTransfer {
     );
   }
 
-  @Action('CONFIRM_TRANSFER')
+  @Action(EmailTransferActions.CONFIRM_TRANSFER)
   async handleConfirmTransfer(ctx: WizardContext) {
     ctx.answerCbQuery('🔃 Processing your transfer');
     try {
@@ -272,11 +279,11 @@ export class EmailTransfer {
 
       // Make the transfer using the TransferService
       await this.transferService.emailTransfer(accessToken, {
-        amount: (amount * 10_000_000).toFixed(0),
+        amount: BigInt(Math.round(amount * 10 ** 8)).toString(),
         payeeId: payee.id,
         email: payee.email,
         purposeCode: purpose.value,
-        currency: 'USDT',
+        currency: 'USDC',
       });
 
       // Notify the user
@@ -290,33 +297,33 @@ export class EmailTransfer {
       // Exit the scene
       ctx.scene.leave();
     } catch (error) {
-      console.error(
-        'Error processing transfer:',
-        error.response?.data?.message || 'Failed to process transfer',
-      );
-      await ctx.answerCbQuery(
-        `❌ ${error.response?.data?.message || 'Failed to process transfer'}`,
-      );
-      await ctx.reply(
-        `❌ ${error.response?.data?.message || 'Failed to process transfer'}`,
-      );
+      await handleErrorResponses({
+        ctx,
+        error,
+        defaultMessage: 'Failed to process your transfer',
+        buttons: [
+          { text: '🔃 Retry', action: EmailTransferActions.CONFIRM_TRANSFER },
+        ],
+      });
     }
   }
 
   @Action(EmailTransferActions.ADD_PAYEE)
   async addPayee(@Ctx() ctx: WizardContext) {
+    ctx.answerCbQuery();
     ctx.scene.leave();
     ctx.scene.enter(ADD_PAYEE_SCENE_ID);
   }
 
   @Action(EmailTransferActions.BACK)
   async navigateBack(ctx: WizardContext) {
+    ctx.answerCbQuery();
     ctx.wizard.back();
   }
 
   @Action(EmailTransferActions.CANCEL)
   async navigateCancel(ctx: WizardContext) {
-    await ctx.answerCbQuery('❌ Cancelling Transfer...');
+    await ctx.answerCbQuery('🚫 Cancelling Transfer...');
     await ctx.scene.leave();
     await ctx.replyWithMarkdownV2('Transfer cancelled\\.', {
       reply_markup: this.keyboard.getMainKeyboard().reply_markup,
@@ -326,5 +333,10 @@ export class EmailTransfer {
   @Action(EmailTransferActions.CLOSE)
   async close(ctx: WizardContext) {
     await ctx.deleteMessage();
+  }
+
+  @Command(Commands.Cancel)
+  async cancel(@Ctx() ctx: WizardContext) {
+    await ctx.scene.leave();
   }
 }

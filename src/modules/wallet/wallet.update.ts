@@ -1,9 +1,11 @@
-import { Action, Ctx, InjectBot, Update } from 'nestjs-telegraf';
+import { Action, Command, Ctx, InjectBot, Update } from 'nestjs-telegraf';
 import { KeyboardsService } from '../shared/keyboard.service';
-import { Context, Telegraf } from 'telegraf';
+import { Context, Markup, Telegraf } from 'telegraf';
 import { WalletService } from './wallet.service';
 import { Actions } from 'src/enums/actions.enums';
 import { RequireAuth } from '../auth/auth.decorator';
+import { handleErrorResponses } from 'src/utils';
+import { Commands } from 'src/enums/commands.enum';
 
 @Update()
 @RequireAuth()
@@ -14,30 +16,35 @@ export class WalletUpdate {
     private readonly walletService: WalletService,
   ) {}
 
-  @Action('WALLET')
+  @Command(Commands.WALLET)
+  async handleWalletCommand(@Ctx() ctx: Context) {
+    const [message] = await Promise.allSettled([
+      ctx.reply('🔃 Fetching Wallets...'),
+      this.wallet(ctx),
+    ]);
+
+    if (message.status === 'fulfilled') {
+      await ctx.deleteMessage(message.value.message_id);
+    }
+  }
+
+  @Action(Actions.WALLET)
+  async handleWalletAction(@Ctx() ctx: Context) {
+    ctx.answerCbQuery('🔃 Fetching Wallets...');
+    await this.wallet(ctx);
+  }
+
+  @Command(Commands.SET_DEFAULT_WALLET)
+  async handleSetDefaultWalletCommand(@Ctx() ctx: Context) {
+    await this.setDefaultWallet(ctx);
+  }
+
   async wallet(@Ctx() ctx: Context) {
     try {
-      // Check if user is logged in
-      if (!ctx.session.auth?.access_token) {
-        const keyboard = this.keyboard.getUnauthenticatedKeyboard();
-        await ctx.replyWithMarkdownV2(
-          'You are not logged in\\. Please login first\\.',
-          {
-            reply_markup: keyboard.reply_markup,
-          },
-        );
-        return;
-      }
-
-      ctx.answerCbQuery('🔃 Fetching Wallets');
-
-      // Fetch wallets and balances
-      const wallets = await this.walletService.getWallets(
-        ctx.session.auth?.access_token ?? '',
-      );
-      const balances = await this.walletService.getBalances(
-        ctx.session.auth.access_token,
-      );
+      const [wallets, balances] = await Promise.all([
+        this.walletService.getWallets(ctx.session.auth?.access_token ?? ''),
+        this.walletService.getBalances(ctx.session.auth?.access_token ?? ''),
+      ]);
 
       // Format the wallet message
       const walletMessage = [
@@ -66,36 +73,41 @@ export class WalletUpdate {
       ].join('');
 
       // Get the wallet keyboard
-      const keyboard = this.keyboard.getWalletKeyboard();
+      const keyboard = Markup.inlineKeyboard([
+        [
+          Markup.button.callback(
+            'Set Default Wallet',
+            Actions.SET_DEFAULT_WALLET,
+          ),
+        ],
+        [Markup.button.callback('🔄 Refresh', Actions.WALLET)],
+        [Markup.button.callback('❌ Close', Actions.CLOSE)],
+      ]);
 
       // Send the message with the inline keyboard
       await ctx.replyWithMarkdownV2(walletMessage, {
         reply_markup: keyboard.reply_markup,
       });
     } catch (error) {
-      console.error(error);
-      await ctx.reply('An error occurred while fetching wallets');
+      await handleErrorResponses({
+        error,
+        ctx,
+        defaultMessage: 'Failed to fetch wallets',
+        buttons: [{ text: '🔃 Retry', action: Actions.WALLET }],
+      });
     }
   }
 
   @Action(Actions.SET_DEFAULT_WALLET)
-  async setDefaultWallet(@Ctx() ctx: Context) {
+  async setDefaultWalletAction(@Ctx() ctx: Context) {
+    ctx.answerCbQuery();
+    await this.setDefaultWallet(ctx);
+  }
+  async setDefaultWallet(ctx) {
     try {
-      // Check if user is logged in
-      if (!ctx.session.auth?.access_token) {
-        const keyboard = this.keyboard.getUnauthenticatedKeyboard();
-        await ctx.replyWithMarkdownV2(
-          'You are not logged in\\. Please login first\\.',
-          {
-            reply_markup: keyboard.reply_markup,
-          },
-        );
-        return;
-      }
-
       // Fetch all wallets
       const wallets = await this.walletService.getWallets(
-        ctx.session.auth.access_token,
+        ctx.session.auth?.access_token ?? '',
       );
 
       // Create a keyboard with wallet addresses
@@ -106,8 +118,14 @@ export class WalletUpdate {
         reply_markup: keyboard.reply_markup,
       });
     } catch (error) {
-      console.error(error);
-      await ctx.reply('An error occurred while fetching wallets');
+      await handleErrorResponses({
+        ctx,
+        error,
+        defaultMessage: 'Failed to fetch wallets',
+        buttons: [{ text: '🔃 Retry', action: Actions.SET_DEFAULT_WALLET }],
+        prefix: '🔐',
+        header: 'Set Default Wallet',
+      });
     }
   }
 
@@ -127,13 +145,27 @@ export class WalletUpdate {
       );
 
       // Confirm to the user
-      await ctx.reply('✅ Default wallet updated successfully!');
+      await ctx.replyWithMarkdownV2(
+        '✅ Default wallet updated successfully\\!',
+        {
+          reply_markup: Markup.inlineKeyboard([
+            [Markup.button.callback('🔄 Refresh', Actions.WALLET)],
+            [Markup.button.callback('❌ Close', Actions.CLOSE)],
+          ]).reply_markup,
+        },
+      );
 
       // Refresh the wallet list
       await this.wallet(ctx);
     } catch (error) {
-      console.error(error);
-      await ctx.reply('Failed to set default wallet. Please try again.');
+      await handleErrorResponses({
+        ctx,
+        error,
+        defaultMessage: 'Failed to set default wallet',
+        buttons: [{ text: '🔃 Retry', action: Actions.SET_DEFAULT_WALLET }],
+        prefix: '🔐',
+        header: 'Set Default Wallet',
+      });
     }
   }
 }

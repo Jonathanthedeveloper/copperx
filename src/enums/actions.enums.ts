@@ -37,4 +37,7 @@ export enum Actions {
 
   // MISC
   CLOSE = 'CLOSE',
+  HELP = 'HELP',
+  CANCEL = 'CANCEL',
+  MAIN_MENU = 'MAIN_MENU',
 }

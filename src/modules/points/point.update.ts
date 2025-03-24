@@ -1,21 +1,37 @@
-import { Action, Ctx, Update } from 'nestjs-telegraf';
+import { Action, Command, Ctx, Update } from 'nestjs-telegraf';
 import { Actions } from 'src/enums/actions.enums';
 import { Context, Markup } from 'telegraf';
 import { PointsService } from './points.service';
-import { escapeMarkdownV2 } from 'src/utils';
+import { escapeMarkdownV2, handleErrorResponses } from 'src/utils';
 import { RequireAuth } from '../auth/auth.decorator';
+import { Commands } from 'src/enums/commands.enum';
 
 @Update()
+@RequireAuth()
 export class PointUpdate {
   constructor(private readonly pointService: PointsService) {}
 
   @Action(Actions.POINTS)
-  @RequireAuth()
   async points(@Ctx() ctx: Context) {
     ctx.answerCbQuery('🔃 Fetching your points...');
 
-    const accessToken = ctx.session.auth?.access_token ?? '';
+    await this.fetchpoints(ctx);
+  }
 
+  @Command(Commands.POINTS)
+  async pointsCommand(@Ctx() ctx: Context) {
+    const [message] = await Promise.allSettled([
+      ctx.reply('🔃 Fetching your points...'),
+      this.fetchpoints(ctx),
+    ]);
+
+    if (message.status === 'fulfilled') {
+      await ctx.deleteMessage(message.value.message_id);
+    }
+  }
+
+  async fetchpoints(ctx) {
+    const accessToken = ctx.session.auth?.access_token ?? '';
     try {
       // Fetch total points and all points
       const [totalPoints, allPoints] = await Promise.all([
@@ -38,19 +54,13 @@ export class PointUpdate {
         ]).reply_markup,
       });
     } catch (error) {
-      console.error(
-        'Error fetching points:',
-        error.response?.data || error.message,
-      );
-      ctx.replyWithMarkdownV2(
-        'An error occurred while fetching your points\\. Please try again later\\.',
-        {
-          reply_markup: Markup.inlineKeyboard([
-            [Markup.button.callback('🔄 Retry', Actions.POINTS)],
-            [Markup.button.callback('❌ Close', Actions.CLOSE)],
-          ]).reply_markup,
-        },
-      );
+      await handleErrorResponses({
+        ctx,
+        error,
+        defaultMessage:
+          '🛑 An error occurred while fetching your points. Please try again later.',
+        buttons: [{ text: '🔄 Retry', action: Actions.POINTS }],
+      });
     }
   }
 

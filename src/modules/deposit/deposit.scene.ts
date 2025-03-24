@@ -1,11 +1,12 @@
-import { Action, Wizard, WizardStep } from 'nestjs-telegraf';
+import { Action, Command, Ctx, Wizard, WizardStep } from 'nestjs-telegraf';
 import { WizardContext, WizardScene } from 'telegraf/typings/scenes';
 import { WalletService } from '../wallet/wallet.service';
 import { Markup } from 'telegraf';
 import { KeyboardsService } from '../shared/keyboard.service';
 import qrcode from 'qrcode';
 import { RequireAuth } from '../auth/auth.decorator';
-import { escapeMarkdownV2 } from 'src/utils';
+import { escapeMarkdownV2, handleErrorResponses } from 'src/utils';
+import { Commands } from 'src/enums/commands.enum';
 
 export const DEPOSIT_SCENE_ID = 'DEPOSIT_SCENE';
 
@@ -24,14 +25,12 @@ export class DepositScene {
   ) {}
 
   @WizardStep(1)
-  async showAvailableNetworks(ctx: WizardContext) {
-    ctx.answerCbQuery('🔃 Fetching Available Networks');
-
+  async showAvailableNetworks(@Ctx() ctx: WizardContext) {
     const keyboard = Markup.inlineKeyboard([
       ...Object.entries(this.walletService.networks).map(([id, name]) => [
         Markup.button.callback(name, `NETWORK:${id}`),
       ]),
-      [Markup.button.callback('❌ Cancel', DepositSceneActions.CANCEL)],
+      [Markup.button.callback('🚫 Cancel', DepositSceneActions.CANCEL)],
     ]);
 
     await ctx.replyWithMarkdownV2(
@@ -45,7 +44,7 @@ export class DepositScene {
   }
 
   @Action(/^NETWORK:(.+)$/)
-  async handleNetworkSelection(ctx: WizardContext) {
+  async handleNetworkSelection(@Ctx() ctx: WizardContext) {
     const callbackData = (ctx.callbackQuery as { data: string })?.data;
     const match = callbackData.match(/^NETWORK:(.+)$/);
 
@@ -55,62 +54,81 @@ export class DepositScene {
       return ctx.scene.leave();
     }
 
-    const wallets = await this.walletService.getWallets(
-      // @ts-expect-error
-      ctx.session.auth?.access_token ?? '',
-    );
+    try {
+      const wallets = await this.walletService.getWallets(
+        // @ts-expect-error
+        ctx.session.auth?.access_token ?? '',
+      );
 
-    ctx.answerCbQuery('🔃 Fetching Wallets');
+      ctx.answerCbQuery('🔃 Fetching Wallets');
 
-    const wallet = wallets.find((w) => w.network === networkId);
+      const wallet = wallets.find((w) => w.network === networkId);
 
-    if (!wallet) {
-      ctx.reply('No wallets found for the selected network.');
-      return ctx.scene.leave();
+      if (!wallet) {
+        ctx.reply('No wallets found for the selected network.');
+        return ctx.scene.leave();
+      }
+
+      const message = `
+        💎 *Deposit Instructions*
+  
+  To deposit funds to your wallet:
+  
+  1\\. Send your funds to this address: \`${escapeMarkdownV2(wallet.walletAddress)}\`
+  
+  2\\. Make sure to select the correct network: *${escapeMarkdownV2(this.walletService.networks[wallet.network])}*
+  
+  ⚠️ *Important:*
+  • Only send supported tokens
+  • Double\\-check the network before sending
+  • Minimum deposit amount may apply
+        `;
+
+      const keyboard = Markup.inlineKeyboard([
+        [
+          Markup.button.callback(
+            '🔍 View QR Code',
+            `QR:${wallet.walletAddress}`,
+          ),
+        ],
+        [Markup.button.callback('🚫 Cancel', DepositSceneActions.CANCEL)],
+        [Markup.button.callback('❌ Close', DepositSceneActions.CLOSE)],
+      ]);
+
+      await ctx.replyWithMarkdownV2(message, {
+        reply_markup: keyboard.reply_markup,
+      });
+    } catch (error) {
+      await handleErrorResponses({
+        ctx,
+        error,
+        defaultMessage: 'Failed to load wallets',
+        header: '🚫 *Error*',
+      });
     }
-
-    const message = `
-      💎 *Deposit Instructions*
-
-To deposit funds to your wallet:
-
-1\\. Send your funds to this address: \`${escapeMarkdownV2(wallet.walletAddress)}\`
-
-2\\. Make sure to select the correct network: *${escapeMarkdownV2(this.walletService.networks[wallet.network])}*
-
-⚠️ *Important:*
-• Only send supported tokens
-• Double\\-check the network before sending
-• Minimum deposit amount may apply
-      `;
-
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🔍 View QR Code', `QR:${wallet.walletAddress}`)],
-      [Markup.button.callback('❌ Cancel', DepositSceneActions.CANCEL)],
-      [Markup.button.callback('Close', DepositSceneActions.CLOSE)],
-    ]);
-
-    await ctx.replyWithMarkdownV2(message, {
-      reply_markup: keyboard.reply_markup,
-    });
   }
 
   @Action(/^QR:(.+)$/)
-  async showQRCode(ctx: WizardContext) {
+  async showQRCode(@Ctx() ctx: WizardContext) {
     ctx.answerCbQuery('🔍 Generating QR Code...');
     // @ts-expect-error
     const walletAddress = ctx.callbackQuery?.data?.split(':')[1];
     if (!walletAddress) {
-      ctx.reply('Invalid wallet address.');
+      await ctx.replyWithMarkdownV2(
+        '⚠️ Invalid wallet address\\. Please try again\\.',
+        {
+          reply_markup: Markup.inlineKeyboard([
+            Markup.button.callback('🚫 Cancel', DepositSceneActions.CANCEL),
+          ]).reply_markup,
+        },
+      );
       ctx.scene.leave();
       return;
     }
 
-    // const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${walletAddress}`;
-
     const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('❌ Cancel', DepositSceneActions.CANCEL)],
-      [Markup.button.callback('Close', DepositSceneActions.CLOSE)],
+      [Markup.button.callback('🚫 Cancel', DepositSceneActions.CANCEL)],
+      [Markup.button.callback('❌ Close', DepositSceneActions.CLOSE)],
     ]);
 
     const url = await qrcode.toDataURL(walletAddress, {
@@ -120,7 +138,7 @@ To deposit funds to your wallet:
       { source: Buffer.from(url.split('base64,')[1], 'base64') },
       {
         caption:
-          'Scan this QR code to deposit funds to: `' + walletAddress + '`',
+          '📱 Scan this QR code to deposit funds to: `' + walletAddress + '`',
         reply_markup: keyboard.reply_markup,
         parse_mode: 'MarkdownV2',
       },
@@ -128,22 +146,28 @@ To deposit funds to your wallet:
   }
 
   @Action(DepositSceneActions.CANCEL)
-  async cancelDeposit(ctx: WizardContext) {
+  async cancelDeposit(@Ctx() ctx: WizardContext) {
     ctx.answerCbQuery('🚫 Cancelling Deposit...');
     await ctx.replyWithMarkdownV2('Deposit cancelled', {
       reply_markup: this.keyboard.getMainKeyboard().reply_markup,
     });
-    ctx.scene.leave();
+    await ctx.scene.leave();
   }
 
   @Action(DepositSceneActions.BACK)
-  async back(ctx: WizardContext) {
+  async back(@Ctx() ctx: WizardContext) {
+    ctx.answerCbQuery();
     ctx.wizard.back();
   }
 
   @Action(DepositSceneActions.CLOSE)
-  async close(ctx: WizardContext) {
-    // ctx.scene.leave();
+  async close(@Ctx() ctx: WizardContext) {
+    ctx.answerCbQuery();
     await ctx.deleteMessage();
+  }
+
+  @Command(Commands.Cancel)
+  async cancel(@Ctx() ctx: WizardContext) {
+    await ctx.scene.leave();
   }
 }

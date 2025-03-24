@@ -24,9 +24,9 @@ export class KeyboardsService {
         Markup.button.callback('🪙 View Points', Actions.POINTS),
         Markup.button.callback('📢 Referrals', Actions.REFERRALS),
       ],
-      [Markup.button.callback('Logout', Actions.LOGOUT)],
+      [Markup.button.callback('🚪 Logout', Actions.LOGOUT)],
       [
-        Markup.button.callback('📜 Help', 'help'),
+        Markup.button.callback('📜 Help', Actions.HELP),
         Markup.button.url('🆘 Support', 'https://t.me/copperxcommunity/2183'),
       ],
       [
@@ -41,12 +41,17 @@ export class KeyboardsService {
 
   getUnauthenticatedKeyboard(): ReturnType<typeof Markup.inlineKeyboard> {
     return Markup.inlineKeyboard([
-      [Markup.button.callback('🔑 Login with Copperx', Actions.LOGIN)],
+      [Markup.button.callback('🔑 Login with Email', Actions.LOGIN)],
       [
-        Markup.button.callback('📜 Help', 'help'),
+        Markup.button.callback('📜 Help', Actions.HELP),
         Markup.button.url('🆘 Support', 'https://t.me/copperxcommunity/2183'),
       ],
-      [Markup.button.callback('📄 Terms & Conditions', 'TERMS')],
+      [
+        Markup.button.url(
+          '📄 Terms & Conditions',
+          'https://copperx.io/terms-of-service',
+        ),
+      ],
       [Markup.button.callback('❌ Close', Actions.CLOSE)],
     ]);
   }
@@ -55,7 +60,6 @@ export class KeyboardsService {
     return Markup.inlineKeyboard([
       [Markup.button.callback('🔄 Refresh', Actions.PROFILE)],
       [Markup.button.callback('🚪 Logout', Actions.LOGOUT)],
-      [Markup.button.callback('🏠 Back to Menu', 'start')],
       [Markup.button.callback('❌ Close', Actions.CLOSE)],
     ]);
   }
@@ -69,7 +73,6 @@ export class KeyboardsService {
         ),
       ],
       [Markup.button.callback('🔄 Refresh', 'WALLET')],
-      [Markup.button.callback('🏠 Back to Menu', 'start')],
       [Markup.button.callback('❌ Close', Actions.CLOSE)],
     ]);
   }
@@ -83,10 +86,7 @@ export class KeyboardsService {
         `set_default_wallet_${wallet.id}`,
       ),
     ]);
-    buttons.push(
-      [Markup.button.callback('🏠 Back to Menu', 'start')],
-      [Markup.button.callback('❌ Close', Actions.CLOSE)],
-    );
+    buttons.push([Markup.button.callback('❌ Close', Actions.CLOSE)]);
     return Markup.inlineKeyboard(buttons);
   }
   getConfirmTransferKeyboard({
