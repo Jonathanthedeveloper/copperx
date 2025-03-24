@@ -68,3 +68,7 @@ pnpm build
 # Start in production mode
 pnpm start:prod
 ```
+
+## Documentation
+
+For detailed command reference, please refer to the [Command Reference](COMMAND_REFERENCE.md)

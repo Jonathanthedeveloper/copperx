@@ -18,6 +18,12 @@ export class DepositUpdate {
 
   @Command(Commands.Deposit)
   async handleDeposit(@Ctx() ctx: WizardContext) {
-    ctx.scene.enter(DEPOSIT_SCENE_ID);
+    const [message] = await Promise.allSettled([
+      ctx.reply('🔃 Fetching Available Networks'),
+      ctx.scene.enter(DEPOSIT_SCENE_ID),
+    ]);
+    if (message.status === 'fulfilled') {
+      await ctx.deleteMessage(message.value.message_id);
+    }
   }
 }

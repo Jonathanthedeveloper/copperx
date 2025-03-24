@@ -1,0 +1,23 @@
+start - Start the bot
+login - Authenticate with the bot
+logout - Log out from the bot
+deposit - Deposit funds into your account
+profile - View your profile information
+close - Close the current conversation
+cancel - Cancel the current operation
+kyc - Complete your KYC verification
+recipients - Manage your payees
+add_recipient - Add a new payee
+remove_recipient - Remove an existing payee
+points - Check your points balance
+referrals - View your referral information
+transfer - Transfer funds to another account
+transfer_to_email - Transfer funds to an email address
+transfer_to_wallet - Transfer funds to a wallet
+transfer_to_bank_account - Transfer funds to a bank account
+transfer_history - View your transfer history
+wallet - Manage your wallet
+set_default_wallet - Set your default wallet
+transactions - View your transaction history
+help - Get help with using the bot
+main_menu - Go back to the main menu
