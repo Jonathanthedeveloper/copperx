@@ -82,7 +82,7 @@ export class KeyboardsService {
   ): ReturnType<typeof Markup.inlineKeyboard> {
     const buttons = wallets.map((wallet) => [
       Markup.button.callback(
-        `📌 ${wallet.walletAddress} (${wallet.network})`,
+        `📌 ${wallet.network} ${wallet.isDefault ? '✅' : ''}`,
         `set_default_wallet_${wallet.id}`,
       ),
     ]);
