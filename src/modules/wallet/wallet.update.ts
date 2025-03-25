@@ -110,8 +110,16 @@ export class WalletUpdate {
         ctx.session.auth?.access_token ?? '',
       );
 
+      const resolvedWallets = wallets.map((wallet) => {
+        return {
+          ...wallet,
+          network: this.walletService.networks[wallet.network],
+        };
+      });
+
       // Create a keyboard with wallet addresses
-      const keyboard = this.keyboard.getWalletSelectionKeyboard(wallets);
+      const keyboard =
+        this.keyboard.getWalletSelectionKeyboard(resolvedWallets);
 
       // Send the message with the inline keyboard
       await ctx.replyWithMarkdownV2('Select a wallet to set as default:', {
