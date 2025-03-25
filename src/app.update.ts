@@ -31,7 +31,7 @@ export class AppUpdate {
     try {
       await this.handleAuthenticatedUser(ctx);
       ctx.replyWithMarkdownV2(
-        `👋 *Welcome to CopperX\\!*\n\n🚀 _The Future of payments`,
+        `👋 *Welcome to CopperX\\!*\n\n🚀 _The Future of payments_`,
         {
           reply_markup: this.keyboard.getMainKeyboard().reply_markup,
         },
